@@ -2704,3 +2704,87 @@ test('modelNameDisplay "prefixed" does not double-prefix an already prefixed nam
   assert.ok(entry, 'expected oc/big-pickle entry');
   assert.equal(entry.name, 'OpenCode Free / Big Pickle');
 });
+
+test('provider hook builds reasoning variants from OmniRoute effort_tiers', async () => {
+  const plugin = await OmniRouteAuthPlugin({});
+
+  global.fetch = async (input) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/v1/models')) {
+      return new Response(
+        JSON.stringify({
+          object: 'list',
+          data: [
+            {
+              id: 'codex/gpt-5.6-sol',
+              name: 'GPT 5.6 Sol',
+              capabilities: {
+                reasoning: true,
+                effort_tiers: ['low', 'high', 'xhigh', 'max', 'ultra'],
+              },
+            },
+            {
+              id: 'opencode-go/deepseek-v4.1-flash',
+              name: 'DeepSeek V4.1 Flash',
+              effort_tiers: ['none', 'low', 'max'],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const result = await plugin.provider.models(
+    {
+      id: 'omniroute',
+      name: 'OmniRoute',
+      source: 'config',
+      env: [],
+      options: { baseURL: 'http://localhost:20132/v1', apiMode: 'chat' },
+      models: {},
+    },
+    { auth: { type: 'api', key: 'test-key' } },
+  );
+
+  const sol = result['codex/gpt-5.6-sol'];
+  assert.deepEqual(
+    Object.keys(sol.variants).sort(),
+    ['high', 'low', 'max', 'ultra', 'xhigh'],
+  );
+  assert.deepEqual(sol.variants.xhigh, { reasoningEffort: 'xhigh' });
+  assert.equal(sol.reasoning, true);
+
+  const flash = result['opencode-go/deepseek-v4.1-flash'];
+  assert.deepEqual(Object.keys(flash.variants).sort(), ['low', 'max', 'none']);
+  assert.equal(flash.reasoning, true);
+});
+
+test('chat.headers hook pins OmniRoute sessions with x-session-id', async () => {
+  const plugin = await OmniRouteAuthPlugin({});
+
+  const omnirouteOutput = { headers: {} };
+  await plugin['chat.headers'](
+    { sessionID: 'ses_abc123', provider: { info: { id: 'omniroute' } } },
+    omnirouteOutput,
+  );
+  assert.equal(omnirouteOutput.headers['x-session-id'], 'ses_abc123');
+
+  const otherOutput = { headers: {} };
+  await plugin['chat.headers'](
+    { sessionID: 'ses_abc123', provider: { info: { id: 'anthropic' } } },
+    otherOutput,
+  );
+  assert.deepEqual(otherOutput.headers, {});
+
+  const blankOutput = { headers: {} };
+  await plugin['chat.headers'](
+    { sessionID: '   ', provider: { info: { id: 'omniroute' } } },
+    blankOutput,
+  );
+  assert.deepEqual(blankOutput.headers, {});
+});

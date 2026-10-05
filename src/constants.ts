@@ -1,8 +1,24 @@
+import type { OmniRouteReasoningEffort } from './types.js';
+
 /**
  * OmniRoute provider ID
  */
 export const OMNIROUTE_PROVIDER_ID = 'omniroute';
 
+
+/**
+ * Reasoning effort tiers recognized by OmniRoute.
+ */
+export const OMNIROUTE_REASONING_EFFORTS: readonly OmniRouteReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+];
 /**
  * Plugin definition ID shared by the V1 and V2 entry points.
  */

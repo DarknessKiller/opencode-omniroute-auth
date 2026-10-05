@@ -1,4 +1,17 @@
 /**
+ * Reasoning effort tier reported by OmniRoute for a model.
+ */
+export type OmniRouteReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultra';
+
+/**
  * OmniRoute model definition
  */
 export interface OmniRouteModel {
@@ -15,6 +28,8 @@ export interface OmniRouteModel {
   supportsTemperature?: boolean;
   supportsReasoning?: boolean;
   supportsAttachment?: boolean;
+  /** Normalized reasoning effort tiers exposed by OmniRoute */
+  effortTiers?: OmniRouteReasoningEffort[];
 
   // OmniRoute native fields (snake_case from API)
   context_length?: number;
@@ -22,6 +37,7 @@ export interface OmniRouteModel {
   max_output_tokens?: number;
   vision?: boolean;
   tool_calling?: boolean;
+  effort_tiers?: unknown;
 
   // OpenAI-compatible model metadata fields used by OmniRoute
   owned_by?: string;
@@ -34,6 +50,7 @@ export interface OmniRouteModel {
     tool_calling?: boolean;
     reasoning?: boolean;
     thinking?: boolean;
+    effort_tiers?: unknown;
     attachment?: boolean;
     temperature?: boolean;
     toolcall?: boolean;
@@ -211,7 +228,7 @@ export interface OmniRouteProviderModel {
  * Model variant configuration
  */
 export interface OmniRouteModelVariant {
-  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?: OmniRouteReasoningEffort;
   [key: string]: unknown;
 }
 

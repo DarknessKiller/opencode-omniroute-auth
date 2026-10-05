@@ -163,6 +163,14 @@ export const OmniRouteAuthPlugin: Plugin = async (_input) => {
         );
       },
     },
+    // Session affinity: pin each OpenCode session to one OmniRoute route so
+    // upstream prompt caches stay warm across turns (OpenRouter-style header).
+    'chat.headers': async (input, output) => {
+      if (input.provider.info?.id !== OMNIROUTE_PROVIDER_ID) return;
+      const sessionId = input.sessionID?.trim();
+      if (!sessionId) return;
+      output.headers['x-session-id'] = sessionId;
+    },
     auth: createAuthHook(),
   };
 };
@@ -957,6 +965,34 @@ function toProviderModels(
   return Object.fromEntries(entries);
 }
 
+/**
+ * Build OpenCode model variants for reasoning effort.
+ * Prefers `effort_tiers` reported by the OmniRoute API, then variant-suffixed
+ * model IDs, then a low/medium/high fallback for reasoning-capable models.
+ */
+function buildModelVariants(
+  model: OmniRouteModel,
+  supportsReasoning: boolean,
+): Record<string, OmniRouteModelVariant> {
+  const variants: Record<string, OmniRouteModelVariant> = { ...(model.variants ?? {}) };
+
+  for (const tier of model.effortTiers ?? []) {
+    variants[tier] = { ...(variants[tier] ?? {}), reasoningEffort: tier };
+  }
+
+  if (Object.keys(variants).length > 0) {
+    return variants;
+  }
+
+  return supportsReasoning
+    ? {
+        low: { reasoningEffort: 'low' },
+        medium: { reasoningEffort: 'medium' },
+        high: { reasoningEffort: 'high' },
+      }
+    : {};
+}
+
 function toProviderModel(
   model: OmniRouteModel,
   baseUrl: string,
@@ -1028,15 +1064,7 @@ function toProviderModel(
     options: {},
     headers: {},
     status: 'active',
-    variants: model.variants && Object.keys(model.variants).length > 0
-      ? model.variants
-      : supportsReasoning
-        ? {
-            low: { reasoningEffort: 'low' },
-            medium: { reasoningEffort: 'medium' },
-            high: { reasoningEffort: 'high' },
-          }
-        : {},
+    variants: buildModelVariants(model, supportsReasoning),
   };
 }
 

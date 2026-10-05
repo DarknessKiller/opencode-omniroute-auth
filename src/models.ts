@@ -1,10 +1,11 @@
-import type { OmniRouteConfig, OmniRouteModel, OmniRouteModelVariant, OmniRouteModelsResponse } from './types.js';
+import type { OmniRouteConfig, OmniRouteModel, OmniRouteModelVariant, OmniRouteModelsResponse, OmniRouteReasoningEffort } from './types.js';
 import {
   OMNIROUTE_DEFAULT_MODELS,
   OMNIROUTE_ENDPOINTS,
   MODEL_CACHE_TTL,
   REQUEST_TIMEOUT,
   PROVIDER_ALIAS_TO_CANONICAL,
+  OMNIROUTE_REASONING_EFFORTS,
 } from './constants.js';
 import {
   getModelsDevIndex,
@@ -48,6 +49,26 @@ function getCacheKey(config: OmniRouteConfig, apiKey: string): string {
 
   return `${baseUrl}:${apiKey}:${modelsDevHash}`;
 }
+/**
+ * Normalize the `effort_tiers` field returned by OmniRoute /v1/models.
+ * Accepts a top-level array or a `capabilities.effort_tiers` array.
+ */
+function normalizeEffortTiers(value: unknown): OmniRouteReasoningEffort[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const known = OMNIROUTE_REASONING_EFFORTS as readonly string[];
+  const tiers = Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => known.includes(item)),
+    ),
+  ) as OmniRouteReasoningEffort[];
+
+  return tiers.length > 0 ? tiers : undefined;
+}
+
 
 /**
  * Normalize an OmniRoute model by reading all field variants
@@ -58,6 +79,8 @@ function normalizeModel(model: OmniRouteModel): OmniRouteModel {
     model.capabilities && typeof model.capabilities === 'object'
       ? model.capabilities
       : {};
+  const effortTiers =
+    normalizeEffortTiers(model.effort_tiers) ?? normalizeEffortTiers(capabilities.effort_tiers);
 
   return {
     ...model,
@@ -87,11 +110,13 @@ function normalizeModel(model: OmniRouteModel): OmniRouteModel {
       model.tool_calling ??
       capabilities.tool_calling ??
       capabilities.toolcall,
+    effortTiers,
     supportsReasoning:
       model.supportsReasoning ??
       model.reasoning ??
       capabilities.reasoning ??
-      capabilities.thinking,
+      capabilities.thinking ??
+      (effortTiers && effortTiers.length > 0 ? true : undefined),
     supportsAttachment:
       model.supportsAttachment ??
       model.attachment ??

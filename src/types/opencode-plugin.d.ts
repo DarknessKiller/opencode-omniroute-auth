@@ -140,10 +140,30 @@ declare module '@opencode-ai/plugin' {
     ) => Promise<Record<string, ModelV2>>;
   }
 
+  // Chat header hook (OpenCode >=1.15.0)
+  export interface ProviderContext {
+    source?: string;
+    info?: Provider;
+    options?: Record<string, unknown>;
+  }
+
+  export interface ChatHeadersHookInput {
+    sessionID: string;
+    provider: ProviderContext;
+  }
+
+  export interface ChatHeadersHookOutput {
+    headers: Record<string, string>;
+  }
+
   export interface Hooks {
     config?: (input: Config) => Promise<void>;
     auth?: AuthHook;
     provider?: ProviderHook;
+    'chat.headers'?: (
+      input: ChatHeadersHookInput,
+      output: ChatHeadersHookOutput,
+    ) => Promise<void>;
     [key: string]: unknown;
   }
 

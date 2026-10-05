@@ -413,3 +413,40 @@ test('deduplication keeps alias when canonical is missing', async () => {
   assert.equal(models.length, 1, 'Should keep single model');
   assert.equal(models[0].id, 'ollama-cloud/deepseek-v4', 'Should normalize to canonical ID');
 });
+
+test('fetchModels normalizes OmniRoute effort_tiers', async () => {
+  global.fetch = async (input) => {
+    const url = input instanceof Request ? input.url : input.toString();
+    if (url.includes('/v1/models')) {
+      return new Response(
+        JSON.stringify({
+          object: 'list',
+          data: [
+            {
+              id: 'codex/gpt-5.6-sol',
+              name: 'Sol',
+              capabilities: { reasoning: true, effort_tiers: ['Low', 'xhigh', 'bogus'] },
+            },
+            {
+              id: 'codex/gpt-6-luna',
+              name: 'Luna',
+              effort_tiers: ['none', 'max'],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  };
+
+  const models = await fetchModels(CONFIG, CONFIG.apiKey, true);
+
+  const sol = models.find((model) => model.id === 'codex/gpt-5.6-sol');
+  assert.deepEqual(sol.effortTiers, ['low', 'xhigh']);
+  assert.equal(sol.supportsReasoning, true);
+
+  const luna = models.find((model) => model.id === 'codex/gpt-6-luna');
+  assert.deepEqual(luna.effortTiers, ['none', 'max']);
+  assert.equal(luna.supportsReasoning, true);
+});
