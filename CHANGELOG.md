@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.0] - Unreleased
+
+### Added
+
+- **OpenCode V2 support** — The package default-exports a definition object carrying both lifecycles: OpenCode V2 calls `setup(ctx)` and OpenCode V1 (1.18.29 or newer) calls `server(ctx)`. The V2 lifecycle registers the `omniroute` integration and provider (driver package, `baseURL`/`apiKey` settings, models), resolves the API key from the active integration credential, the legacy `auth.json` store, or `OMNIROUTE_API_KEY`, and reuses the shared request sanitization. (`src/plugin-v2.ts`, `src/http-sanitize.ts`, `index.ts`)
+- **Session affinity** — Requests now carry an `x-session-id` header (V1 `chat.headers`, V2 `model.request` hook) so OmniRoute keeps every turn of an OpenCode session on one upstream route and prompt caches stay warm. (`src/plugin.ts`, `src/plugin-v2.ts`)
+- **API-driven reasoning effort variants** — Model variants are built from the `effort_tiers` array reported by `/v1/models` (top-level or nested under `capabilities`) instead of a hardcoded low/medium/high set. Unknown tiers are filtered and normalized; variant-suffixed model IDs and the low/medium/high fallback still apply. (`src/models.ts`, `src/plugin.ts`, `src/plugin-v2.ts`)
+
 ## [1.2.3] - Unreleased
 
 ### Added

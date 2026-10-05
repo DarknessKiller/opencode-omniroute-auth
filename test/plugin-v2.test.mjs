@@ -239,12 +239,16 @@ test('setup registers integration, provider, and scoped http hooks', async () =>
     // Session hooks are registered and scoped to the omniroute provider.
     assert.deepEqual(
       calls.hooks.map((h) => h.name).sort(),
-      ['http.request', 'http.response'],
+      ['http.request', 'http.response', 'model.request'],
     );
     assert.ok(calls.hooks.every((h) => h.opts && h.opts.providerID === 'omniroute'));
 
     await cleanup();
-    assert.deepEqual(calls.disposedHooks.sort(), ['http.request', 'http.response']);
+    assert.deepEqual(calls.disposedHooks.sort(), [
+      'http.request',
+      'http.response',
+      'model.request',
+    ]);
   } finally {
     restore();
     rmSync(dataHome, { recursive: true, force: true });
@@ -559,4 +563,80 @@ test('normalizeChatUsageResponse passes through non-chat responses', async () =>
   const usage = JSON.parse(firstLine.slice('data: '.length)).usage;
   assert.equal(usage.prompt_tokens, 5);
   assert.equal(usage.total_tokens, 7);
+});
+
+test('toV2Model builds variants from OmniRoute effort_tiers', () => {
+  const config = { baseUrl: DEAD_BASE_URL, apiKey: 'k', apiMode: 'chat' };
+
+  const tiered = toV2Model(
+    {
+      id: 'codex/gpt-5.6-sol',
+      name: 'GPT 5.6 Sol',
+      supportsReasoning: true,
+      effortTiers: ['low', 'high', 'xhigh', 'max', 'ultra'],
+    },
+    config,
+  );
+  assert.deepEqual(
+    tiered.variants.map((v) => v.id).sort(),
+    ['high', 'low', 'max', 'ultra', 'xhigh'],
+  );
+  assert.deepEqual(
+    tiered.variants.find((v) => v.id === 'xhigh'),
+    { id: 'xhigh', settings: { reasoningEffort: 'xhigh' } },
+  );
+
+  // API tiers and grouped variants merge; explicit variants keep other keys.
+  const merged = toV2Model(
+    {
+      id: 'or-model',
+      name: 'OR',
+      effortTiers: ['low', 'high'],
+      variants: { low: { temperature: 0.2 }, turbo: { reasoningEffort: 'high' } },
+    },
+    config,
+  );
+  assert.deepEqual(
+    merged.variants.find((v) => v.id === 'low'),
+    { id: 'low', settings: { temperature: 0.2, reasoningEffort: 'low' } },
+  );
+  assert.deepEqual(merged.variants.find((v) => v.id === 'turbo'), {
+    id: 'turbo',
+    settings: { reasoningEffort: 'high' },
+  });
+
+  // No API tiers and no grouped variants: reasoning models keep the fallback.
+  const fallback = toV2Model({ id: 'plain', supportsReasoning: true }, config);
+  assert.deepEqual(
+    fallback.variants.map((v) => v.id).sort(),
+    ['high', 'low', 'medium'],
+  );
+});
+
+test('model.request hook pins the session to one upstream route', async () => {
+  const dataHome = makeDataHome();
+  const restore = withAuthEnv({ dataHome, envKey: 'sk-hook-key' });
+
+  try {
+    const { ctx, calls } = makeCtx({
+      options: { baseURL: DEAD_BASE_URL, modelCacheTtl: 3600000 },
+    });
+    const cleanup = await setup(ctx);
+    const affinityHook = calls.hooks.find((h) => h.name === 'model.request');
+    assert.ok(affinityHook);
+    assert.equal(affinityHook.opts.providerID, 'omniroute');
+
+    const event = { sessionID: 'ses_v2_affinity', headers: {} };
+    await affinityHook.cb(event);
+    assert.equal(event.headers['x-session-id'], 'ses_v2_affinity');
+
+    const blank = { sessionID: '   ', headers: {} };
+    await affinityHook.cb(blank);
+    assert.deepEqual(blank.headers, {});
+
+    await cleanup();
+  } finally {
+    restore();
+    rmSync(dataHome, { recursive: true, force: true });
+  }
 });

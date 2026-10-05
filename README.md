@@ -16,6 +16,8 @@
 - ✅ **models.dev Enrichment** - Enriches model metadata from models.dev API with provider alias resolution
 - ✅ **Subscription Provider Fallback** - Falls back to public providers for subscription-based models
 - ✅ **Model Variant Support** - Automatically strips reasoning effort suffixes (e.g., `gpt-5.5-xhigh` → `gpt-5.5`) for lookup
+- ✅ **API-Driven Reasoning Effort Variants** - Builds reasoning variants from the `effort_tiers` reported by `/v1/models` instead of a hardcoded low/medium/high set
+- ✅ **Session Affinity** - Sends `x-session-id` per OpenCode session so OmniRoute keeps a conversation on one upstream route and prompt caches stay warm
 - ✅ **Secure Logging** - Sanitized log output with async file I/O to prevent event loop blocking
 
 ## Installation

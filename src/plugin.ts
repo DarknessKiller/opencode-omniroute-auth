@@ -970,7 +970,7 @@ function toProviderModels(
  * Prefers `effort_tiers` reported by the OmniRoute API, then variant-suffixed
  * model IDs, then a low/medium/high fallback for reasoning-capable models.
  */
-function buildModelVariants(
+export function buildModelVariants(
   model: OmniRouteModel,
   supportsReasoning: boolean,
 ): Record<string, OmniRouteModelVariant> {

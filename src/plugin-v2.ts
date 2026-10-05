@@ -16,6 +16,8 @@
  *   metadata overrides as V1) and refreshes it on an interval;
  * - reuses the shared HTTP sanitization for request payloads and cached
  *   chat-usage normalization.
+ * - pins every model request of a session to one upstream route with the
+ *   `x-session-id` header, so prompt caches stay warm across turns.
  *
  * All `@opencode/plugin` imports are type-only and erased at compile time, so
  * the built plugin has no runtime dependency on the SDK: the V2 host resolves
@@ -38,6 +40,7 @@ import { debug, warn } from './logger.js';
 import { sanitizeForLog } from './omniroute-combos.js';
 import {
   applyModelMetadataOverrides,
+  buildModelVariants,
   createRuntimeConfig,
   formatModelDisplayName,
   getModelFamily,
@@ -110,22 +113,15 @@ export function toV2Model(model: OmniRouteModel, config: OmniRouteConfig): V2Mod
   const supportsTools = model.supportsTools !== false;
   const supportsReasoning = model.supportsReasoning === true;
 
-  // V1 variant records (`{ low: { reasoningEffort: 'low' }, ... }`) become
-  // V2 variant arrays (`[{ id: 'low', settings: { reasoningEffort: 'low' } }]`).
+  // V1 variant records (`{ low: { reasoningEffort: 'low' }, ... }`) become V2
+  // variant arrays (`[{ id: 'low', settings: { reasoningEffort: 'low' } }]`).
   // `reasoningEffort` is a semantic key the V2 core maps to `reasoning_effort`
-  // in the request body for supporting providers.
-  const variantSource =
-    model.variants && Object.keys(model.variants).length > 0
-      ? model.variants
-      : supportsReasoning
-        ? {
-            low: { reasoningEffort: 'low' },
-            medium: { reasoningEffort: 'medium' },
-            high: { reasoningEffort: 'high' },
-          }
-        : {};
-
-  const variants: V2ModelVariant[] = Object.entries(variantSource).map(([id, variant]) => ({
+  // in the request body for supporting providers. `buildModelVariants` prefers
+  // the API `effort_tiers`, then grouped variants, then the low/medium/high
+  // fallback for reasoning-capable models.
+  const variants: V2ModelVariant[] = Object.entries(
+    buildModelVariants(model, supportsReasoning),
+  ).map(([id, variant]) => ({
     id,
     settings: isRecord(variant) && Object.keys(variant).length > 0 ? { ...variant } : undefined,
   }));
@@ -389,10 +385,28 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     { providerID: OMNIROUTE_PROVIDER_ID },
   );
 
+  // 5. Session affinity: pin each OpenCode session to one OmniRoute upstream
+  //    route so multi-turn conversations keep a warm prompt cache.
+  const affinityRegistration = await ctx.session.hook(
+    'model.request',
+    (event) => {
+      const sessionID = event.sessionID?.trim();
+      if (!sessionID) {
+        return;
+      }
+      event.headers['x-session-id'] = sessionID;
+    },
+    { providerID: OMNIROUTE_PROVIDER_ID },
+  );
+
   return async () => {
     disposed = true;
     clearInterval(timer);
-    await Promise.allSettled([requestRegistration.dispose(), responseRegistration.dispose()]);
+    await Promise.allSettled([
+      requestRegistration.dispose(),
+      responseRegistration.dispose(),
+      affinityRegistration.dispose(),
+    ]);
   };
 }
 
